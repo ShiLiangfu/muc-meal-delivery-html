@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校园外卖平台 - 纯前端版本</title>
+    <meta name="description" content="校园外卖平台 - 连接校外餐饮商家与校内学生，提供食堂跑腿服务">
+    <meta name="keywords" content="校园外卖,食堂跑腿,大学生,外卖平台">
+    
+    <!-- Element Plus CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/element-plus@2.3.8/dist/index.css">
+    
+    <!-- 自定义样式 -->
+    <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+    <div id="app">
+        <!-- 全局Loading -->
+        <div v-loading="globalLoading" element-loading-text="加载中..." element-loading-background="rgba(0, 0, 0, 0.7)">
+            <!-- 头部导航 -->
+            <header class="header">
+                <div class="container">
+                    <div class="header-content">
+                        <div class="logo">
+                            <h1>小民送餐</h1>
+                        </div>
+                        <nav class="nav">
+                            <a href="#merchants" class="nav-link" @click="currentView = 'merchants'">商家列表</a>
+                            <a href="#runner" class="nav-link" @click="currentView = 'runner'">跑腿服务</a>
+                            <div v-if="!user.isLoggedIn" class="auth-links">
+                                <a href="#login" class="nav-link" @click="currentView = 'login'">登录</a>
+                                <a href="#register" class="nav-link" @click="currentView = 'register'">注册</a>
+                            </div>
+                            <el-dropdown v-else>
+                                <span class="user-info">
+                                    {{ user.nickname }}
+                                    <el-icon><arrow-down /></el-icon>
+                                </span>
+                                <template #dropdown>
+                                    <el-dropdown-menu>
+                                        <el-dropdown-item @click="currentView = 'profile'">
+                                            个人中心
+                                        </el-dropdown-item>
+                                        <el-dropdown-item @click="currentView = 'orders'">
+                                            我的订单
+                                        </el-dropdown-item>
+                                        <el-dropdown-item divided @click="handleLogout">
+                                            退出登录
+                                        </el-dropdown-item>
+                                    </el-dropdown-menu>
+                                </template>
+                            </el-dropdown>
+                        </nav>
+                    </div>
+                </div>
+            </header>
+
+            <!-- 主要内容区域 -->
+            <main class="main">
+                <!-- 首页 -->
+                <div v-if="currentView === 'home'" class="view-container">
+                    <div class="container">
+                        <!-- 轮播图/横幅 -->
+                        <section class="banner">
+                            <div class="banner-content">
+                                <h2>欢迎来到小民送餐</h2>
+                                <p>连接校外餐饮商家与校内学生，提供便捷的食堂跑腿服务</p>
+                                <div class="banner-actions">
+                                    <el-button type="primary" size="large" @click="currentView = 'merchants'">
+                                        浏览商家
+                                    </el-button>
+                                    <el-button size="large" @click="currentView = 'runner'">
+                                        发布跑腿
+                                    </el-button>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- 功能入口 -->
+                        <section class="features">
+                            <div class="features-grid">
+                                <div class="feature-card" @click="currentView = 'merchants'">
+                                    <div class="feature-icon">
+                                        <el-icon size="48"><shop /></el-icon>
+                                    </div>
+                                    <h3>外卖订餐</h3>
+                                    <p>校园周边优质商家，美食外卖直达宿舍</p>
+                                </div>
+                                <div class="feature-card" @click="currentView = 'runner'">
+                                    <div class="feature-icon">
+                                        <el-icon size="48"><user /></el-icon>
+                                    </div>
+                                    <h3>跑腿代购</h3>
+                                    <p>同学互助，食堂代购服务</p>
+                                </div>
+                                <div class="feature-card" @click="currentView = 'profile'">
+                                    <div class="feature-icon">
+                                        <el-icon size="48"><user /></el-icon>
+                                    </div>
+                                    <h3>个人中心</h3>
+                                    <p>管理个人信息，查看订单历史</p>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- 热门商家 -->
+                        <section class="popular-merchants" v-if="popularMerchants.length > 0">
+                            <h2>热门商家</h2>
+                            <div class="merchants-grid">
+                                <div 
+                                    v-for="merchant in popularMerchants" 
+                                    :key="merchant.id"
+                                    class="merchant-card"
+                                    @click="viewMerchantDetail(merchant.id)"
+                                >
+                                    <div class="merchant-avatar">
+                                        <img :src="getMerchantLogo(merchant.id)" :alt="merchant.name" />
+                                    </div>
+                                    <div class="merchant-info">
+                                        <h4>{{ merchant.name }}</h4>
+                                        <p>{{ merchant.description }}</p>
+                                        <div class="merchant-rating">
+                                            <el-rate v-model="merchant.rating" disabled show-score />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+
+                <!-- 商家列表页面 -->
+                <div v-if="currentView === 'merchants'" class="view-container">
+                    <div class="container">
+                        <div class="page-header">
+                            <h1>商家列表</h1>
+                            <p>发现校园周边优质餐饮商家</p>
+                        </div>
+                        
+                        <!-- 搜索和筛选 -->
+                        <div class="search-section">
+                            <el-input
+                                v-model="searchKeyword"
+                                placeholder="搜索商家名称或菜品"
+                                size="large"
+                                clearable
+                                @input="filterMerchants"
+                            >
+                                <template #prefix>
+                                    <el-icon><search /></el-icon>
+                                </template>
+                            </el-input>
+                        </div>
+
+                        <!-- 商家网格 -->
+                        <div class="merchants-list">
+                            <div 
+                                v-for="merchant in filteredMerchants" 
+                                :key="merchant.id"
+                                class="merchant-item"
+                                @click="viewMerchantDetail(merchant.id)"
+                            >
+                                <div class="merchant-image">
+                                    <img :src="getMerchantLogo(merchant.id)" :alt="merchant.name" />
+                                    <div class="merchant-status" :class="{ active: merchant.status === 1 }">
+                                        {{ merchant.status === 1 ? '营业中' : '休息中' }}
+                                    </div>
+                                </div>
+                                <div class="merchant-content">
+                                    <h3>{{ merchant.name }}</h3>
+                                    <p class="description">{{ merchant.description }}</p>
+                                    <div class="merchant-meta">
+                                        <div class="rating">
+                                            <el-rate v-model="merchant.rating" disabled show-score />
+                                        </div>
+                                        <div class="delivery-info">
+                                            <span>配送费 ¥{{ merchant.deliveryFee }}</span>
+                                            <span>起送 ¥{{ merchant.minOrderAmount }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 商家详情页面 -->
+                <div v-if="currentView === 'merchant-detail'" class="view-container">
+                    <div class="container">
+                        <div v-if="selectedMerchant" class="merchant-detail">
+                            <div class="merchant-header">
+                                <div class="merchant-info">
+                                    <img :src="getMerchantLogo(selectedMerchant.id)" :alt="selectedMerchant.name" class="merchant-logo" />
+                                    <div class="info-content">
+                                        <h1>{{ selectedMerchant.name }}</h1>
+                                        <p>{{ selectedMerchant.description }}</p>
+                                        <div class="merchant-stats">
+                                            <el-rate v-model="selectedMerchant.rating" disabled show-score />
+                                            <span class="address">{{ selectedMerchant.address }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="merchant-actions">
+                                    <el-button @click="currentView = 'merchants'">返回列表</el-button>
+                                    <el-button type="primary" @click="showCart = true" :disabled="cartItemCount === 0">
+                                        购物车 ({{ cartItemCount }})
+                                        <span v-if="cartTotal > 0">¥{{ cartTotal.toFixed(2) }}</span>
+                                    </el-button>
+                                </div>
+                            </div>
+                            
+                            <div class="menu-section">
+                                <h2>菜单</h2>
+                                <div class="menu-grid">
+                                    <div v-for="item in merchantMenu" :key="item.id" class="menu-item">
+                                        <img :src="item.image" :alt="item.name" />
+                                        <div class="item-info">
+                                            <h4>{{ item.name }}</h4>
+                                            <p>{{ item.description }}</p>
+                                            <div class="item-footer">
+                                                <span class="price">¥{{ item.price }}</span>
+                                                <el-button size="small" type="primary" @click="addToCart(item)">
+                                                    加入购物车
+                                                </el-button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 跑腿服务页面 -->
+                <div v-if="currentView === 'runner'" class="view-container">
+                    <div class="container">
+                        <div class="page-header">
+                            <h1>跑腿服务</h1>
+                            <p>同学互助，食堂代购服务</p>
+                        </div>
+                        
+                        <div class="runner-content">
+                            <div class="runner-actions">
+                                <el-button type="primary" size="large" @click="showPublishRunner = true">
+                                    发布跑腿任务
+                                </el-button>
+                            </div>
+                            
+                            <div class="runner-list">
+                                <h3>当前跑腿任务</h3>
+                                <div v-if="runnerTasks.length === 0" class="empty-state">
+                                    <p>暂无跑腿任务</p>
+                                </div>
+                                <div v-else class="tasks-grid">
+                                    <div v-for="task in runnerTasks" :key="task.id" class="task-item">
+                                        <div class="task-header">
+                                            <h4>{{ task.title }}</h4>
+                                            <span class="task-status" :class="task.status">{{ getTaskStatusText(task.status) }}</span>
+                                        </div>
+                                        <p>{{ task.description }}</p>
+                                        <div class="task-footer">
+                                            <div class="task-info">
+                                                <span class="reward">报酬: ¥{{ task.reward }}</span>
+                                                <span class="deadline">截止: {{ task.deadline }}</span>
+                                            </div>
+                                            <el-button 
+                                                v-if="task.status === 'pending'" 
+                                                size="small" 
+                                                type="primary" 
+                                                @click="acceptRunnerTask(task.id)"
+                                            >
+                                                接单
+                                            </el-button>
+                                            <span v-else-if="task.status === 'accepted'" class="accepted-info">
+                                                已被 {{ task.acceptedBy }} 接单
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 登录页面 -->
+                <div v-if="currentView === 'login'" class="view-container">
+                    <div class="container">
+                        <div class="auth-container">
+                            <div class="auth-card">
+                                <h2>登录</h2>
+                                <el-form :model="loginForm" label-width="80px">
+                                    <el-form-item label="用户名">
+                                        <el-input v-model="loginForm.username" placeholder="请输入用户名"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="密码">
+                                        <el-input v-model="loginForm.password" type="password" placeholder="请输入密码"></el-input>
+                                    </el-form-item>
+                                    <el-form-item>
+                                        <el-button type="primary" @click="handleLogin" style="width: 100%">登录</el-button>
+                                    </el-form-item>
+                                </el-form>
+                                <p class="auth-link">
+                                    还没有账号？<a href="#" @click="currentView = 'register'">立即注册</a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 注册页面 -->
+                <div v-if="currentView === 'register'" class="view-container">
+                    <div class="container">
+                        <div class="auth-container">
+                            <div class="auth-card">
+                                <h2>注册</h2>
+                                <el-form :model="registerForm" label-width="80px">
+                                    <el-form-item label="用户名">
+                                        <el-input v-model="registerForm.username" placeholder="请输入用户名"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="昵称">
+                                        <el-input v-model="registerForm.nickname" placeholder="请输入昵称"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="密码">
+                                        <el-input v-model="registerForm.password" type="password" placeholder="请输入密码"></el-input>
+                                    </el-form-item>
+                                    <el-form-item label="确认密码">
+                                        <el-input v-model="registerForm.confirmPassword" type="password" placeholder="请确认密码"></el-input>
+                                    </el-form-item>
+                                    <el-form-item>
+                                        <el-button type="primary" @click="handleRegister" style="width: 100%">注册</el-button>
+                                    </el-form-item>
+                                </el-form>
+                                <p class="auth-link">
+                                    已有账号？<a href="#" @click="currentView = 'login'">立即登录</a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 个人中心页面 -->
+                <div v-if="currentView === 'profile'" class="view-container">
+                    <div class="container">
+                        <div class="page-header">
+                            <h1>个人中心</h1>
+                        </div>
+                        <div v-if="!user.isLoggedIn" class="empty-state">
+                            <p>请先登录</p>
+                            <el-button type="primary" @click="currentView = 'login'">去登录</el-button>
+                        </div>
+                        <div v-else class="profile-content">
+                            <div class="profile-card">
+                                <h3>个人信息</h3>
+                                <div class="profile-info">
+                                    <p><strong>用户名:</strong> {{ user.username }}</p>
+                                    <p><strong>昵称:</strong> {{ user.nickname }}</p>
+                                    <p><strong>注册时间:</strong> {{ user.createdAt }}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 订单列表页面 -->
+                <div v-if="currentView === 'orders'" class="view-container">
+                    <div class="container">
+                        <div class="page-header">
+                            <h1>我的订单</h1>
+                        </div>
+                        <div v-if="!user.isLoggedIn" class="empty-state">
+                            <p>请先登录</p>
+                            <el-button type="primary" @click="currentView = 'login'">去登录</el-button>
+                        </div>
+                        <div v-else class="orders-content">
+                            <div v-if="orders.length === 0" class="empty-state">
+                                <p>暂无订单</p>
+                            </div>
+                            <div v-else class="orders-list">
+                                <div v-for="order in orders" :key="order.id" class="order-item">
+                                    <div class="order-header">
+                                        <span class="order-id">订单号: {{ order.id }}</span>
+                                        <span class="order-status" :class="order.status">{{ getOrderStatusText(order.status) }}</span>
+                                    </div>
+                                    <div class="order-content">
+                                        <p><strong>商家:</strong> {{ order.merchantName }}</p>
+                                        <p><strong>总金额:</strong> ¥{{ order.totalAmount }}</p>
+                                        <p><strong>下单时间:</strong> {{ order.createdAt }}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+
+            <!-- 底部 -->
+            <footer class="footer">
+                <div class="container">
+                    <div class="footer-content">
+                        <p>&copy; 2025 校园外卖平台. All rights reserved.</p>
+                        <p>为校园生活提供便利服务</p>
+                    </div>
+                </div>
+            </footer>
+
+            <!-- 发布跑腿任务对话框 -->
+            <el-dialog v-model="showPublishRunner" title="发布跑腿任务" width="500px">
+                <el-form :model="runnerForm" label-width="80px">
+                    <el-form-item label="任务标题">
+                        <el-input v-model="runnerForm.title" placeholder="请输入任务标题"></el-input>
+                    </el-form-item>
+                    <el-form-item label="任务描述">
+                        <el-input v-model="runnerForm.description" type="textarea" rows="3" placeholder="请详细描述任务内容"></el-input>
+                    </el-form-item>
+                    <el-form-item label="报酬金额">
+                        <el-input-number v-model="runnerForm.reward" :min="1" :max="100" :precision="2"></el-input-number>
+                    </el-form-item>
+                    <el-form-item label="截止时间">
+                        <el-date-picker
+                            v-model="runnerForm.deadline"
+                            type="datetime"
+                            placeholder="选择截止时间"
+                            format="YYYY-MM-DD HH:mm"
+                            value-format="YYYY-MM-DD HH:mm"
+                        />
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <el-button @click="showPublishRunner = false">取消</el-button>
+                    <el-button type="primary" @click="publishRunnerTask">发布</el-button>
+                </template>
+            </el-dialog>
+
+            <!-- 购物车对话框 -->
+            <el-dialog v-model="showCart" title="购物车" width="600px">
+                <div v-if="cart.length === 0" class="empty-cart">
+                    <p>购物车为空</p>
+                </div>
+                <div v-else>
+                    <div class="cart-items">
+                        <div v-for="item in cart" :key="item.id" class="cart-item">
+                            <div class="item-image">
+                                <img :src="item.image" :alt="item.name" />
+                            </div>
+                            <div class="item-details">
+                                <h4>{{ item.name }}</h4>
+                                <p>{{ item.description }}</p>
+                                <div class="item-price">¥{{ item.price }}</div>
+                            </div>
+                            <div class="item-controls">
+                                <el-input-number 
+                                    v-model="item.quantity" 
+                                    :min="1" 
+                                    :max="99" 
+                                    size="small"
+                                    @change="updateCartQuantity(item.id, item.quantity)"
+                                />
+                                <el-button 
+                                    size="small" 
+                                    type="danger" 
+                                    @click="removeFromCart(item.id)"
+                                    style="margin-left: 10px;"
+                                >
+                                    删除
+                                </el-button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="cart-summary">
+                        <div class="summary-row">
+                            <span>商品小计:</span>
+                            <span>¥{{ cartTotal.toFixed(2) }}</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>配送费:</span>
+                            <span>¥{{ selectedMerchant.deliveryFee.toFixed(2) }}</span>
+                        </div>
+                        <div class="summary-row total">
+                            <span>总计:</span>
+                            <span>¥{{ orderTotal.toFixed(2) }}</span>
+                        </div>
+                        <div v-if="cartTotal < selectedMerchant.minOrderAmount" class="min-order-tip">
+                            还差 ¥{{ (selectedMerchant.minOrderAmount - cartTotal).toFixed(2) }} 达到起送金额
+                        </div>
+                    </div>
+                </div>
+                
+                <template #footer>
+                    <el-button @click="showCart = false">继续购物</el-button>
+                    <el-button @click="clearCart" v-if="cart.length > 0">清空购物车</el-button>
+                    <el-button type="primary" @click="proceedToCheckout" :disabled="cart.length === 0">
+                        去结算
+                    </el-button>
+                </template>
+            </el-dialog>
+
+            <!-- 确认下单对话框 -->
+            <el-dialog v-model="showCheckout" title="确认订单" width="600px">
+                <div class="checkout-content">
+                    <div class="merchant-info">
+                        <h3>{{ selectedMerchant.name }}</h3>
+                        <p>{{ selectedMerchant.address }}</p>
+                    </div>
+                    
+                    <div class="order-items">
+                        <h4>订单详情</h4>
+                        <div v-for="item in cart" :key="item.id" class="order-item">
+                            <span class="item-name">{{ item.name }}</span>
+                            <span class="item-quantity">x{{ item.quantity }}</span>
+                            <span class="item-total">¥{{ (item.price * item.quantity).toFixed(2) }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="order-summary">
+                        <div class="summary-row">
+                            <span>商品小计:</span>
+                            <span>¥{{ cartTotal.toFixed(2) }}</span>
+                        </div>
+                        <div class="summary-row">
+                            <span>配送费:</span>
+                            <span>¥{{ selectedMerchant.deliveryFee.toFixed(2) }}</span>
+                        </div>
+                        <div class="summary-row total">
+                            <span>应付金额:</span>
+                            <span>¥{{ orderTotal.toFixed(2) }}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="delivery-info">
+                        <h4>配送信息</h4>
+                        <p>配送地址: 学生宿舍楼下</p>
+                        <p>联系电话: 138****8888</p>
+                        <p>预计送达: 30-45分钟</p>
+                    </div>
+                </div>
+                
+                <template #footer>
+                    <el-button @click="showCheckout = false">返回修改</el-button>
+                    <el-button type="primary" @click="confirmOrder">确认下单</el-button>
+                </template>
+            </el-dialog>
+        </div>
+    </div>
+
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3.3.4/dist/vue.global.js"></script>
+    <!-- Element Plus -->
+    <script src="https://unpkg.com/element-plus@2.3.8/dist/index.full.js"></script>
+    <!-- Element Plus Icons -->
+    <script src="https://unpkg.com/@element-plus/icons-vue@2.1.0/dist/index.iife.min.js"></script>
+    
+    <!-- 应用脚本 -->
+    <script src="./js/app.js"></script>
+</body>
+</html>
